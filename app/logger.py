@@ -1,19 +1,3 @@
-"""
-app/logger.py — Structured JSON Logging
-
-Logs every pipeline step to:
-  1. logs/pipeline.jsonl  — one JSON object per query (machine-readable)
-  2. logs/app.log         — human-readable text log
-  3. Terminal             — real-time output during development
-
-Every log entry includes: timestamp, tenant, question, classification,
-generated_sql, final_sql, execution_result, response, token_usage,
-latency_ms, retries, errors.
-
-This directly satisfies Section 5 (Structured logging) and
-Section 9 (Observability & Evaluation) of the brief.
-"""
-
 import json
 import logging
 import os
@@ -22,39 +6,27 @@ from pathlib import Path
 
 from app.config import config
 
-
-LOG_DIR = Path(config.LOG_DIR)
+LOG_DIR      = Path(config.LOG_DIR)
 LOG_DIR.mkdir(exist_ok=True)
 
-PIPELINE_LOG  = LOG_DIR / "pipeline.jsonl"   # Structured — one JSON per line
-APP_LOG       = LOG_DIR / "app.log"           # Human readable
-SECURITY_LOG  = LOG_DIR / "security.jsonl"    # Security events only
+PIPELINE_LOG = LOG_DIR / "pipeline.jsonl"
+SECURITY_LOG = LOG_DIR / "security.jsonl"
+APP_LOG      = LOG_DIR / "app.log"
 
 
-# Configure root logger 
 def setup_logging():
-    """Call once at app startup."""
     level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
-
-    # Root logger
-    root = logging.getLogger()
+    root  = logging.getLogger()
     root.setLevel(level)
-
-    # Avoid duplicate handlers on re-runs (Streamlit reloads)
     if root.handlers:
         return
-
     fmt = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-
-    # File handler — human readable
     fh = logging.FileHandler(APP_LOG)
     fh.setFormatter(fmt)
     root.addHandler(fh)
-
-    # Terminal handler
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
     root.addHandler(ch)
@@ -64,7 +36,6 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-# Structured pipeline logger 
 def log_pipeline_event(
     question: str,
     tenant_vkorg: str,
@@ -82,12 +53,9 @@ def log_pipeline_event(
     error: str,
     pipeline_mode: str,
     tenant_modified: bool,
+    tool_calls: list = None,
     blocked_reason: str = "",
 ):
-    """
-    Write one structured JSON log entry for a complete pipeline run.
-    Appends to logs/pipeline.jsonl
-    """
     entry = {
         "timestamp":         datetime.utcnow().isoformat() + "Z",
         "tenant_vkorg":      tenant_vkorg,
@@ -107,8 +75,8 @@ def log_pipeline_event(
         "answer_preview":    answer[:200] if answer else None,
         "token_usage":       token_usage,
         "latency_ms":        latency_ms,
+        "tool_calls":        tool_calls or [],
     }
-
     with open(PIPELINE_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, default=str) + "\n")
 
@@ -126,27 +94,20 @@ def log_security_event(
     tenant_vkorg: str = "",
     question: str = "",
 ):
-    """
-    Log a security-relevant event to logs/security.jsonl.
-    Event types: SQL_BLOCKED, TENANT_VIOLATION, INJECTION_ATTEMPT, RATE_LIMIT
-    """
     entry = {
-        "timestamp":   datetime.utcnow().isoformat() + "Z",
-        "event_type":  event_type,
-        "detail":      detail,
+        "timestamp":    datetime.utcnow().isoformat() + "Z",
+        "event_type":   event_type,
+        "detail":       detail,
         "tenant_vkorg": tenant_vkorg,
-        "question":    question[:300] if question else None,
-        "sql_snippet": sql[:300] if sql else None,
+        "question":     question[:300] if question else None,
+        "sql_snippet":  sql[:300] if sql else None,
     }
-
     with open(SECURITY_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, default=str) + "\n")
-
     logger.warning(f"SECURITY [{event_type}]: {detail}")
 
 
 def load_pipeline_logs() -> list[dict]:
-    """Load all pipeline log entries. Used by evaluation runner."""
     if not PIPELINE_LOG.exists():
         return []
     entries = []
@@ -162,7 +123,6 @@ def load_pipeline_logs() -> list[dict]:
 
 
 def load_security_logs() -> list[dict]:
-    """Load all security log entries."""
     if not SECURITY_LOG.exists():
         return []
     entries = []
