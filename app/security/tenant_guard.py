@@ -22,8 +22,7 @@ def enforce_tenant_scope(sql: str, vkorg: str = None) -> tuple[str, bool, str]:
 
     references_orders = (
         "ORDER_HEADERS" in sql_upper or
-        "OH." in sql_upper or
-        "DAILY_METRICS_SNAPSHOTS" in sql_upper
+        "OH." in sql_upper
     )
 
     if not references_orders:

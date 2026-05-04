@@ -1,34 +1,36 @@
-
--- Talk to Your Data — PostgreSQL Schema
+-- ============================================================
+-- Talk to Your Data — PostgreSQL Schema (corrected)
+-- Matches exact CSV column order from pre-processed data
 -- Run: psql talk_to_your_data -f schema.sql
+-- ============================================================
 
--- Drop existing tables (safe re-run)
 DROP TABLE IF EXISTS order_lines CASCADE;
 DROP TABLE IF EXISTS order_headers CASCADE;
 DROP TABLE IF EXISTS customers CASCADE;
 DROP TABLE IF EXISTS daily_metrics_snapshots CASCADE;
 DROP TABLE IF EXISTS companies CASCADE;
 
-
--- TABLE 1: companies (tenants)
-
+-- ============================================================
+-- TABLE 1: companies (4 rows)
+-- ============================================================
 CREATE TABLE companies (
     id UUID PRIMARY KEY,
-    name TEXT NOT NULL,
-    code TEXT UNIQUE NOT NULL,
+    name TEXT,
+    code TEXT UNIQUE,
     health_thresholds JSONB,
     impact_thresholds JSONB,
-    default_currency CHAR(3) DEFAULT 'EUR',
+    default_currency CHAR(3),
     timezone TEXT,
-    is_active BOOLEAN DEFAULT true,
+    is_active BOOLEAN,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
     vkorg_codes JSONB,
     order_book_target NUMERIC
 );
 
-
--- TABLE 2: customers
+-- ============================================================
+-- TABLE 2: customers (6,787 rows) — 61 columns exact
+-- ============================================================
 CREATE TABLE customers (
     id UUID PRIMARY KEY,
     external_id TEXT,
@@ -37,7 +39,7 @@ CREATE TABLE customers (
     city TEXT,
     region TEXT,
     postal_code TEXT,
-    country_code CHAR(2),
+    country_code TEXT,
     industry_sector_id UUID,
     customer_hierarchy_id UUID,
     customer_group_code TEXT,
@@ -80,7 +82,6 @@ CREATE TABLE customers (
     source_record_version INTEGER,
     data_quality_score NUMERIC,
     data_quality_flags JSONB,
-    -- Extra columns found in actual CSV
     ai_status_explanation_generated_at TIMESTAMPTZ,
     ai_outreach_email_generated_at TIMESTAMPTZ,
     ai_outreach_email_language TEXT,
@@ -94,8 +95,9 @@ CREATE TABLE customers (
     lifetime_order_count INTEGER
 );
 
-
--- TABLE 3: order_headers
+-- ============================================================
+-- TABLE 3: order_headers (174,952 rows)
+-- ============================================================
 CREATE TABLE order_headers (
     id UUID PRIMARY KEY,
     external_order_id TEXT,
@@ -108,7 +110,7 @@ CREATE TABLE order_headers (
     net_value NUMERIC,
     currency_code CHAR(3),
     order_status_code TEXT,
-    sales_org_code TEXT,           -- TENANT IDENTIFIER (VKORG)
+    sales_org_code TEXT,
     distribution_channel TEXT,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
@@ -118,8 +120,9 @@ CREATE TABLE order_headers (
     document_category_code CHAR(1)
 );
 
-
--- TABLE 4: order_lines
+-- ============================================================
+-- TABLE 4: order_lines (268,880 rows)
+-- ============================================================
 CREATE TABLE order_lines (
     id UUID PRIMARY KEY,
     order_header_id UUID REFERENCES order_headers(id),
@@ -141,25 +144,23 @@ CREATE TABLE order_lines (
     contract_reference TEXT
 );
 
-
--- TABLE 5: daily_metrics_snapshots
+-- ============================================================
+-- TABLE 5: daily_metrics_snapshots (280 rows) — 65 columns exact
+-- ============================================================
 CREATE TABLE daily_metrics_snapshots (
     id UUID PRIMARY KEY,
     snapshot_date DATE,
-    company_id UUID REFERENCES companies(id),
-    -- Legacy (kept as 0)
-    total_order_value NUMERIC DEFAULT 0,
-    open_order_value NUMERIC DEFAULT 0,
-    average_order_value NUMERIC DEFAULT 0,
-    revenue_at_risk NUMERIC DEFAULT 0,
-    frequency_drift_count INTEGER DEFAULT 0,
-    -- Order book rolling windows
+    total_order_value NUMERIC,
+    open_order_value NUMERIC,
+    average_order_value NUMERIC,
+    revenue_at_risk NUMERIC,
+    frequency_drift_count INTEGER,
     order_book_value NUMERIC,
     order_book_value_month NUMERIC,
     order_book_value_month_prev NUMERIC,
     order_book_value_month_change NUMERIC,
     order_book_value_month_change_pct NUMERIC,
-    order_book_value_quarter NUMERIC,  
+    order_book_value_quarter NUMERIC,
     order_book_value_quarter_prev NUMERIC,
     order_book_value_quarter_change NUMERIC,
     order_book_value_quarter_change_pct NUMERIC,
@@ -167,7 +168,6 @@ CREATE TABLE daily_metrics_snapshots (
     order_book_value_year_prev NUMERIC,
     order_book_value_year_change NUMERIC,
     order_book_value_year_change_pct NUMERIC,
-    -- AOV rolling windows
     avg_order_value_month NUMERIC,
     avg_order_value_month_prev NUMERIC,
     avg_order_value_month_change NUMERIC,
@@ -180,7 +180,6 @@ CREATE TABLE daily_metrics_snapshots (
     avg_order_value_year_prev NUMERIC,
     avg_order_value_year_change NUMERIC,
     avg_order_value_year_change_pct NUMERIC,
-    -- Order velocity
     order_velocity_month NUMERIC,
     order_velocity_month_prev NUMERIC,
     order_velocity_month_change NUMERIC,
@@ -190,7 +189,6 @@ CREATE TABLE daily_metrics_snapshots (
     order_velocity_year NUMERIC,
     order_velocity_year_prev NUMERIC,
     order_velocity_year_change NUMERIC,
-    -- Revenue at risk
     revenue_at_risk_12m NUMERIC,
     revenue_at_risk_1m_ago NUMERIC,
     revenue_at_risk_3m_ago NUMERIC,
@@ -201,41 +199,43 @@ CREATE TABLE daily_metrics_snapshots (
     revenue_at_risk_quarter_change_pct NUMERIC,
     revenue_at_risk_year_change NUMERIC,
     revenue_at_risk_year_change_pct NUMERIC,
-    -- Health distribution
     healthy_count INTEGER,
     early_warning_count INTEGER,
     at_risk_count INTEGER,
     critical_count INTEGER,
-    inactive_count INTEGER,
-    total_customer_count INTEGER,
     customers_needing_attention INTEGER,
     value_at_stake NUMERIC,
     overdue_count INTEGER,
     declining_spend_count INTEGER,
+    total_customer_count INTEGER,
     improved_count INTEGER,
     deteriorated_count INTEGER,
     new_alerts_count INTEGER,
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ
+    company_id UUID REFERENCES companies(id),
+    inactive_count INTEGER
 );
 
+-- ============================================================
+-- INDEXES
+-- ============================================================
+CREATE INDEX idx_order_headers_sales_org   ON order_headers(sales_org_code);
+CREATE INDEX idx_order_headers_customer    ON order_headers(customer_id);
+CREATE INDEX idx_order_headers_date        ON order_headers(order_date);
+CREATE INDEX idx_order_headers_status      ON order_headers(order_status_code);
+CREATE INDEX idx_order_headers_doc_cat     ON order_headers(document_category_code);
+CREATE INDEX idx_order_lines_header        ON order_lines(order_header_id);
+CREATE INDEX idx_order_lines_material      ON order_lines(material_number);
+CREATE INDEX idx_customers_health          ON customers(health_status_code);
+CREATE INDEX idx_customers_owner           ON customers(account_owner_name);
+CREATE INDEX idx_customers_company         ON customers(company_id);
+CREATE INDEX idx_customers_requires_attn   ON customers(requires_attention);
+CREATE INDEX idx_daily_metrics_company     ON daily_metrics_snapshots(company_id, snapshot_date DESC);
 
--- INDEXES (critical for performance on large tables)
-CREATE INDEX idx_order_headers_sales_org    ON order_headers(sales_org_code);
-CREATE INDEX idx_order_headers_customer_id  ON order_headers(customer_id);
-CREATE INDEX idx_order_headers_order_date   ON order_headers(order_date);
-CREATE INDEX idx_order_headers_status       ON order_headers(order_status_code);
-CREATE INDEX idx_order_headers_doc_cat      ON order_headers(document_category_code);
-CREATE INDEX idx_order_lines_header         ON order_lines(order_header_id);
-CREATE INDEX idx_order_lines_material       ON order_lines(material_number);
-CREATE INDEX idx_customers_health           ON customers(health_status_code);
-CREATE INDEX idx_customers_owner            ON customers(account_owner_name);
-CREATE INDEX idx_customers_company          ON customers(company_id);
-CREATE INDEX idx_customers_requires_attn    ON customers(requires_attention);
-CREATE INDEX idx_daily_metrics_company_date ON daily_metrics_snapshots(company_id, snapshot_date DESC);
-
--- Verify
 SELECT 'Schema created successfully' AS status;
-SELECT table_name FROM information_schema.tables
+SELECT table_name, 
+       (SELECT COUNT(*) FROM information_schema.columns 
+        WHERE table_name = t.table_name 
+        AND table_schema = 'public') AS column_count
+FROM information_schema.tables t
 WHERE table_schema = 'public'
 ORDER BY table_name;

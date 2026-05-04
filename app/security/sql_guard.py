@@ -1,6 +1,7 @@
 import logging
 import re
-from database import execute_query
+from dataclasses import dataclass, field
+
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -17,12 +18,14 @@ SUSPICIOUS_PATTERNS = [
     r"\bINFORMATION_SCHEMA\b", r"\bpg_catalog\b",
     r"\bpg_tables\b", r"\bpg_user\b",
 ]
- 
-@dataclass 
+
+
+@dataclass
 class ValidationResult:
     is_safe: bool
     reason: str = ""
     warnings: list[str] = field(default_factory=list)
+
 
 def validate_sql(sql: str) -> ValidationResult:
     if not sql or not sql.strip():
@@ -31,16 +34,16 @@ def validate_sql(sql: str) -> ValidationResult:
     sql_upper = sql.upper().strip()
     warnings = []
 
-    #Phase 1 Starting with SELECT
-    if not sql_upper.lstrip().startswith("SELECT"):
+    # Phase 1: Must start with SELECT (or WITH for CTEs)
+    stripped = sql_upper.lstrip()
+    if not (stripped.startswith("SELECT") or stripped.startswith("WITH")):
         logger.warning(f"BLOCKED: Does not start with SELECT: {sql[:100]}")
         return ValidationResult(
             is_safe=False,
-            reason="Only SELECT statements are permitted"
+            reason="Only SELECT statements are permitted",
         )
 
-    
-    #Phase 2 Forbidden Pattern Keywords
+    # Phase 2: Forbidden keywords
     for pattern in FORBIDDEN_SQL_PATTERNS:
         if re.search(pattern, sql_upper, re.IGNORECASE | re.DOTALL):
             logger.warning(f"BLOCKED: Forbidden pattern '{pattern}'")
@@ -48,14 +51,14 @@ def validate_sql(sql: str) -> ValidationResult:
                 is_safe=False,
                 reason="Query contains a forbidden operation. Only read-only SELECT queries are allowed.",
             )
- 
-    # Phase 3 Suspicious patterns (log only)
+
+    # Phase 3: Suspicious patterns (log only)
     for pattern in SUSPICIOUS_PATTERNS:
         if re.search(pattern, sql_upper, re.IGNORECASE):
             warnings.append(f"Suspicious pattern: {pattern}")
             logger.warning(f"Suspicious SQL pattern '{pattern}'")
- 
-    # Phase 4 AST parse via sqlglot
+
+    # Phase 4: AST parse via sqlglot
     try:
         parsed = sqlglot.parse(sql, dialect="postgres")
         if not parsed:
@@ -69,14 +72,5 @@ def validate_sql(sql: str) -> ValidationResult:
                 )
     except Exception as e:
         warnings.append(f"AST parse warning: {str(e)[:100]}")
- 
-    # Phase 5 Semicolon injection
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
-    if len(statements) > 1:
-        return ValidationResult(
-            is_safe=False,
-            reason="Multiple SQL statements are not allowed.",
-        )
- 
+
     return ValidationResult(is_safe=True, warnings=warnings)
- 
