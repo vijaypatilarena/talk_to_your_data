@@ -159,7 +159,7 @@ CREATE TABLE daily_metrics_snapshots (
     order_book_value_month_prev NUMERIC,
     order_book_value_month_change NUMERIC,
     order_book_value_month_change_pct NUMERIC,
-    order_book_value_quarter NUMERIC,
+    order_book_value_quarter NUMERIC,  
     order_book_value_quarter_prev NUMERIC,
     order_book_value_quarter_change NUMERIC,
     order_book_value_quarter_change_pct NUMERIC,
