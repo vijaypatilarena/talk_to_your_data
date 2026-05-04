@@ -1,5 +1,5 @@
 """
-app/security/tenant_guard.py — Tenant Isolation Enforcement
+Tenant Isolation Enforcement
 Ensures every SQL query is scoped to the active tenant's VKORG.
 Enforced at APPLICATION LAYER — never trusted to the LLM alone.
 """

@@ -1,5 +1,5 @@
 """
-app/security/sql_executor.py — Safe SQL Execution
+Safe SQL Execution
 Combines validation + tenant enforcement + execution.
 Called directly by agent tools.
 """
