@@ -1,5 +1,5 @@
 """
-app/agent/tools.py — Agent Tool Definitions
+ Agent Tool Definitions
 
 Four tools the agent can call:
   1. classify_question   — data question or general chat?
@@ -8,7 +8,6 @@ Four tools the agent can call:
   4. retry_sql           — self-correct a failed query
 
 The agent decides which tools to call and in what order.
-This is the core of the agentic approach.
 """
 
 from app.config import config

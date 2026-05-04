@@ -1,5 +1,5 @@
 """
-app/agent/agent_runner.py — PRIMARY Agentic Pipeline
+PRIMARY Agentic Pipeline
 
 This is the main pipeline. Uses Claude's native tool use (Agent SDK).
 The agent autonomously decides when to classify, generate SQL,
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 
 
-# ── Data classes ──────────────────────────────────────────────────────────────
+#  Data classes 
 
 @dataclass
 class TokenUsage:
@@ -102,7 +102,7 @@ class AgentResult:
     error: str = ""
 
 
-# ── Main agent pipeline ───────────────────────────────────────────────────────
+#  Main agent pipeline 
 
 def run_agent(
     user_question: str,
@@ -145,7 +145,7 @@ def run_agent(
 
     logger.info(f"Agent start | '{user_question[:80]}' | tenant: {vkorg}")
 
-    # ── Agentic loop ──────────────────────────────────────────────────────────
+    #  Agentic loop 
     max_iterations = 10
     iteration      = 0
 
@@ -166,7 +166,7 @@ def run_agent(
         token_usage.total_input  += response.usage.input_tokens
         token_usage.total_output += response.usage.output_tokens
 
-        # ── Agent finished — gave final answer ────────────────────────────────
+#Agent finished  gave final answer   
         if response.stop_reason == "end_turn":
             final_text = ""
             for block in response.content:
@@ -189,7 +189,7 @@ def run_agent(
             )
             return AgentResult(answer=trace.answer, trace=trace, success=True)
 
-        # ── Agent is calling tools ────────────────────────────────────────────
+        # Agent is calling tools 
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
             tool_results = []
@@ -244,7 +244,7 @@ def run_agent(
     return AgentResult(answer=error, trace=trace, success=False, error=error)
 
 
-# ── Tool execution handlers ───────────────────────────────────────────────────
+# Tool execution handlers 
 
 def _execute_tool(
     tool_name: str,
@@ -257,7 +257,7 @@ def _execute_tool(
     Returns (result_json_string, ToolCallRecord)
     """
 
-    # ── classify_question ─────────────────────────────────────────────────────
+    #  classify_question    
     if tool_name == "classify_question":
         classification = tool_input.get("classification", "DATA_QUESTION")
         reasoning      = tool_input.get("reasoning", "")
@@ -273,7 +273,7 @@ def _execute_tool(
             ToolCallRecord(tool_name=tool_name, input=tool_input, output=output, success=True),
         )
 
-    # ── generate_sql ──────────────────────────────────────────────────────────
+    # generate_sql 
     elif tool_name == "generate_sql":
         sql        = tool_input.get("sql", "")
         query_type = tool_input.get("query_type", "raw")
@@ -295,7 +295,7 @@ def _execute_tool(
             ToolCallRecord(tool_name=tool_name, input=tool_input, output=output, success=True),
         )
 
-    # ── execute_sql ───────────────────────────────────────────────────────────
+    #  execute_sql 
     elif tool_name == "execute_sql":
         sql = tool_input.get("sql", "")
         ex  = execute_safe_query(sql=sql, tenant_vkorg=vkorg)
@@ -357,7 +357,7 @@ def _execute_tool(
             ),
         )
 
-    # ── retry_sql ─────────────────────────────────────────────────────────────
+    #  retry_sql 
     elif tool_name == "retry_sql":
         fixed_sql     = tool_input.get("fixed_sql", "")
         error_message = tool_input.get("error_message", "")
@@ -407,7 +407,7 @@ def _execute_tool(
         )
 
 
-# ── Logging ───────────────────────────────────────────────────────────────────
+#  Logging          
 
 def _write_log(trace: AgentTrace, vkorg: str, company: str):
     try:
