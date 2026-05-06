@@ -54,7 +54,9 @@ def execute_query(sql: str, params: tuple = (), row_limit: int = None) -> dict[s
     try:
         with get_connection() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(sql, params)
+                # Escape literal % so psycopg2 doesn't treat them as param placeholders
+                safe_sql = sql.replace("%", "%%") if not params else sql
+                cur.execute(safe_sql, params)
                 rows = cur.fetchmany(limit + 1)
                 truncated = len(rows) > limit
                 rows = rows[:limit]

@@ -7,7 +7,7 @@ load_dotenv()
 class Config:
     # Anthropic
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    ANTHROPIC_MODEL: str   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+    ANTHROPIC_MODEL: str   = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
     # Database
     DB_HOST: str     = os.getenv("DB_HOST", "localhost")
