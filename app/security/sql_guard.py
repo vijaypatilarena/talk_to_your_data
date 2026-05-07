@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field
 
 import sqlglot
-import sqlglot.expressions as exp
+import sqlglot.expressions as exp  
 
 logger = logging.getLogger(__name__)
 
