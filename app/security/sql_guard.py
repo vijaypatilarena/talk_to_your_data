@@ -13,7 +13,8 @@ FORBIDDEN_SQL_PATTERNS = [
     r"\bREVOKE\b", r"\bEXECUTE\b", r"\bEXEC\b", r"\bCOPY\b",
     r"\bpg_sleep\b", r"\bXP_\w+",
 ]
-
+  
+  
 SUSPICIOUS_PATTERNS = [
     r"\bINFORMATION_SCHEMA\b", r"\bpg_catalog\b",
     r"\bpg_tables\b", r"\bpg_user\b",
