@@ -14,7 +14,7 @@ FORBIDDEN_SQL_PATTERNS = [
     r"\bpg_sleep\b", r"\bXP_\w+",
 ]
   
-  
+
 SUSPICIOUS_PATTERNS = [
     r"\bINFORMATION_SCHEMA\b", r"\bpg_catalog\b",
     r"\bpg_tables\b", r"\bpg_user\b",
@@ -39,9 +39,9 @@ def validate_sql(sql: str) -> ValidationResult:
     stripped = sql_upper.lstrip()
     if not (stripped.startswith("SELECT") or stripped.startswith("WITH")):
         logger.warning(f"BLOCKED: Does not start with SELECT: {sql[:100]}")
-        return ValidationResult(
+        return ValidationResult(    
             is_safe=False,
-            reason="Only SELECT statements are permitted",
+            reason="Only SELECT statements are permitted",  
         )
 
     # Phase 2: Forbidden keywords
