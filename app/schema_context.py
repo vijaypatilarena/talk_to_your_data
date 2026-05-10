@@ -46,7 +46,9 @@ Active tenant VKORG: '{vkorg}' — EVERY query touching order_headers MUST filte
   document_category_code CHAR(1)        -- C/L = revenue, K/H = deductions
   order_type_code TEXT
   distribution_channel TEXT
- 
+  
+
+  
   REVENUE SIGN CONVENTION (CRITICAL):
     document_category_code IN ('C','L') → ADD to revenue
     document_category_code IN ('K','H') → SUBTRACT from revenue
