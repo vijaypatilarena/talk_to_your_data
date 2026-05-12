@@ -45,7 +45,7 @@ def log_pipeline_event(
     final_sql: str,
     execution_success: bool,
     row_count: int,
-    truncated: bool,
+    truncated: bool,  
     answer: str,
     token_usage: dict,
     latency_ms: int,
