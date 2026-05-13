@@ -20,7 +20,7 @@ from datetime import datetime
 
 import anthropic
 
-from app.config import config
+from app.config import config, get_model_pricing
 from app.agent.tools import AGENT_TOOLS, get_agent_system_prompt
 from app.security.sql_executor import execute_safe_query
 from app.logger import log_pipeline_event
@@ -43,7 +43,8 @@ class TokenUsage:
 
     @property
     def estimated_cost_usd(self) -> float:
-        return (self.total_input * 3 + self.total_output * 15) / 1_000_000
+        in_rate, out_rate = get_model_pricing(config.ANTHROPIC_MODEL)
+        return (self.total_input * in_rate + self.total_output * out_rate) / 1_000_000
 
     def to_dict(self) -> dict:
         return {
@@ -79,6 +80,7 @@ class AgentTrace:
     query_type: str = ""
     final_sql: str = ""
     tenant_modified: bool = False
+    row_limit_injected: bool = False
     query_results_summary: str = ""
     answer: str = ""
     error: str = ""
@@ -300,8 +302,9 @@ def _execute_tool(
         sql = tool_input.get("sql", "")
         ex  = execute_safe_query(sql=sql, tenant_vkorg=vkorg)
 
-        trace.final_sql       = ex.final_sql
-        trace.tenant_modified = ex.tenant_modified
+        trace.final_sql          = ex.final_sql
+        trace.tenant_modified    = ex.tenant_modified
+        trace.row_limit_injected = ex.row_limit_injected
 
         if ex.blocked_reason:
             trace.blocked_reason = ex.blocked_reason
@@ -357,10 +360,32 @@ def _execute_tool(
             ),
         )
 
-    #  retry_sql 
+    #  retry_sql
     elif tool_name == "retry_sql":
         fixed_sql     = tool_input.get("fixed_sql", "")
         error_message = tool_input.get("error_message", "")
+
+        # Hard cap on retries — stops a misbehaving agent from looping forever.
+        # trace.retry_count is incremented AFTER _execute_tool returns, so this
+        # value is the count of retries ALREADY USED.
+        if trace.retry_count >= config.MAX_RETRIES:
+            logger.warning(
+                f"Retry blocked: limit ({config.MAX_RETRIES}) reached"
+            )
+            output = {
+                "success": False,
+                "error": (
+                    f"Maximum retry limit ({config.MAX_RETRIES}) reached. "
+                    "Stop calling retry_sql and report the failure to the user."
+                ),
+                "retry_limit_hit": True,
+            }
+            return (
+                json.dumps(output),
+                ToolCallRecord(
+                    tool_name=tool_name, input=tool_input, output=output, success=False
+                ),
+            )
 
         logger.info(f"Agent self-correcting SQL | error: {error_message[:100]}")
 
@@ -371,6 +396,7 @@ def _execute_tool(
             trace.generated_sql         = fixed_sql
             trace.final_sql             = ex.final_sql
             trace.tenant_modified       = ex.tenant_modified
+            trace.row_limit_injected    = ex.row_limit_injected
             trace.row_count             = ex.row_count
             trace.truncated             = ex.truncated
             trace.query_results_summary = (

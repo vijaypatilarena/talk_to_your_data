@@ -48,6 +48,17 @@ class TestInjection:
     def test_pg_sleep(self):
         assert not validate_sql("SELECT pg_sleep(10)").is_safe
 
+    def test_two_clean_selects_blocked(self):
+        """Phase 5: two SELECT statements separated by ';' must be blocked
+        even though neither contains a forbidden keyword."""
+        r = validate_sql("SELECT 1; SELECT 2")
+        assert not r.is_safe
+        assert "multiple" in r.reason.lower() or "statement" in r.reason.lower()
+
+    def test_three_clean_selects_blocked(self):
+        r = validate_sql("SELECT 1; SELECT 2; SELECT 3")
+        assert not r.is_safe
+
 
 class TestEdgeCases:
     def test_empty(self):         assert not validate_sql("").is_safe

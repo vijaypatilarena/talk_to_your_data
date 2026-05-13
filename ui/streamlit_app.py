@@ -1095,137 +1095,141 @@ with tab2:
     st.caption("Same question, same security layer — different pipeline architecture.")
 
     if not HAS_DIRECT:
-        st.error("direct_llm_pipeline.py not found. Place it in ui/.")
-        st.stop()
+        # Degrade gracefully — disable just this tab, keep the rest of the app alive.
+        st.error(
+            "⚠️ `direct_llm_pipeline.py` not found in `ui/`. "
+            "The comparison view is disabled, but Chat / Security / Evaluation / Logs "
+            "remain fully functional. Restore the file to re-enable this tab."
+        )
+    else:
+        cmp_q = st.text_input(
+            "Question to compare",
+            value=st.session_state.comparison_question or "Who are our top 5 customers by spend?",
+            key="cmp_input",
+        )
 
-    cmp_q = st.text_input(
-        "Question to compare",
-        value=st.session_state.comparison_question or "Who are our top 5 customers by spend?",
-        key="cmp_input",
-    )
+        run_cmp = st.button("▶ Run Comparison", type="primary", use_container_width=False)
 
-    run_cmp = st.button("▶ Run Comparison", type="primary", use_container_width=False)
+        if run_cmp and cmp_q:
+            st.session_state.comparison_question = cmp_q
+            lcol, rcol = st.columns(2)
 
-    if run_cmp and cmp_q:
-        st.session_state.comparison_question = cmp_q
-        lcol, rcol = st.columns(2)
+            with lcol:
+                st.markdown("#### 🔴 Option A — Direct LLM")
+                st.caption("One API call · No tool use · No self-correction")
+                with st.spinner("Running direct LLM…"):
+                    llm_r = run_direct_llm(cmp_q, active_vkorg, active_name)
+                st.session_state.comparison_llm = llm_r
 
-        with lcol:
-            st.markdown("#### 🔴 Option A — Direct LLM")
-            st.caption("One API call · No tool use · No self-correction")
-            with st.spinner("Running direct LLM…"):
-                llm_r = run_direct_llm(cmp_q, active_vkorg, active_name)
-            st.session_state.comparison_llm = llm_r
+            with rcol:
+                st.markdown("#### 🟢 Option B — Agent SDK")
+                st.caption("Autonomous tool calls · Classification · Self-correction")
+                with st.spinner("Running agent…"):
+                    init_pool()
+                    ag_r = run_agent(cmp_q, tenant_vkorg=active_vkorg, tenant_name=active_name)
+                st.session_state.comparison_agent = ag_r
 
-        with rcol:
-            st.markdown("#### 🟢 Option B — Agent SDK")
-            st.caption("Autonomous tool calls · Classification · Self-correction")
-            with st.spinner("Running agent…"):
-                init_pool()
-                ag_r = run_agent(cmp_q, tenant_vkorg=active_vkorg, tenant_name=active_name)
-            st.session_state.comparison_agent = ag_r
+        llm_r = st.session_state.comparison_llm
+        ag_r  = st.session_state.comparison_agent
 
-    llm_r = st.session_state.comparison_llm
-    ag_r  = st.session_state.comparison_agent
+        if llm_r and ag_r:
+            st.divider()
+            lcol, rcol = st.columns(2)
+            ag_trace = ag_r.trace if hasattr(ag_r, "trace") else None
 
-    if llm_r and ag_r:
-        st.divider()
-        lcol, rcol = st.columns(2)
-        ag_trace = ag_r.trace if hasattr(ag_r, "trace") else None
-
-        with lcol:
-            st.markdown("#### 🔴 Direct LLM Result")
-            status_badge = '<span class="pass-badge">PASS</span>' if llm_r.success else '<span class="fail-badge">FAIL</span>'
-            st.markdown(status_badge, unsafe_allow_html=True)
-            st.markdown(
-                f'<span class="metric-pill">🪙 {llm_r.total_tokens:,} tokens</span>'
-                f'<span class="metric-pill">💰 ${llm_r.estimated_cost_usd:.4f}</span>'
-                f'<span class="metric-pill">⏱️ {fmt_ms(llm_r.latency_ms)}</span>',
-                unsafe_allow_html=True,
-            )
-            if llm_r.sql:
-                st.markdown("**Generated SQL**")
-                st.code(llm_r.sql, language="sql")
-            if llm_r.tenant_modified:
-                st.markdown('<span class="security-badge">🔒 TENANT FILTER INJECTED</span>', unsafe_allow_html=True)
-            if llm_r.blocked_reason:
-                st.error(f"🚫 Blocked: {llm_r.blocked_reason}")
-            if llm_r.error and not llm_r.blocked_reason:
-                st.warning(f"Error: {llm_r.error}")
-            if llm_r.success:
-                st.success(f"✅ {llm_r.row_count} rows returned")
-                if llm_r.rows:
-                    st.dataframe(pd.DataFrame(llm_r.rows[:10]), use_container_width=True)
-            else:
-                st.info("No self-correction — single-shot only")
-
-        with rcol:
-            st.markdown("#### 🟢 Agent SDK Result")
-            ag_trace_d = None
-            if ag_trace:
-                ag_tu = ag_trace.token_usage
-                status_badge = '<span class="pass-badge">PASS</span>' if ag_trace.success else '<span class="fail-badge">FAIL</span>'
+            with lcol:
+                st.markdown("#### 🔴 Direct LLM Result")
+                status_badge = '<span class="pass-badge">PASS</span>' if llm_r.success else '<span class="fail-badge">FAIL</span>'
                 st.markdown(status_badge, unsafe_allow_html=True)
                 st.markdown(
-                    f'<span class="metric-pill">🪙 {ag_tu.total:,} tokens</span>'
-                    f'<span class="metric-pill">💰 ${ag_tu.estimated_cost_usd:.4f}</span>'
-                    f'<span class="metric-pill">⏱️ {fmt_ms(ag_trace.latency_ms)}</span>'
-                    f'<span class="metric-pill">🔁 {ag_trace.iterations} iterations</span>',
+                    f'<span class="metric-pill">🪙 {llm_r.total_tokens:,} tokens</span>'
+                    f'<span class="metric-pill">💰 ${llm_r.estimated_cost_usd:.4f}</span>'
+                    f'<span class="metric-pill">⏱️ {fmt_ms(llm_r.latency_ms)}</span>',
                     unsafe_allow_html=True,
                 )
-                tool_seq = " → ".join(
-                    TOOL_LABEL.get(tc.tool_name, tc.tool_name)
-                    for tc in ag_trace.tool_calls
-                )
-                st.caption(f"Tool call sequence: {tool_seq}")
-                if ag_trace.generated_sql:
+                if llm_r.sql:
                     st.markdown("**Generated SQL**")
-                    st.code(ag_trace.generated_sql, language="sql")
-                if ag_trace.tenant_modified:
+                    st.code(llm_r.sql, language="sql")
+                if llm_r.tenant_modified:
                     st.markdown('<span class="security-badge">🔒 TENANT FILTER INJECTED</span>', unsafe_allow_html=True)
-                if ag_trace.blocked_reason:
-                    st.error(f"🚫 Blocked: {ag_trace.blocked_reason}")
-                if ag_trace.success:
-                    st.success(f"✅ {ag_trace.row_count} rows returned")
-                if ag_trace.retry_count > 0:
-                    st.warning(f"⚠️ Self-corrected {ag_trace.retry_count} time(s)")
-                st.markdown(f"**Answer:** {ag_r.answer}")
+                if llm_r.blocked_reason:
+                    st.error(f"🚫 Blocked: {llm_r.blocked_reason}")
+                if llm_r.error and not llm_r.blocked_reason:
+                    st.warning(f"Error: {llm_r.error}")
+                if llm_r.success:
+                    st.success(f"✅ {llm_r.row_count} rows returned")
+                    if llm_r.rows:
+                        st.dataframe(pd.DataFrame(llm_r.rows[:10]), use_container_width=True)
+                else:
+                    st.info("No self-correction — single-shot only")
 
-                ag_trace_d = {
-                    "total_input": ag_tu.total_input, "total_output": ag_tu.total_output,
-                    "total": ag_tu.total, "cost": ag_tu.estimated_cost_usd,
-                    "latency": ag_trace.latency_ms, "retries": ag_trace.retry_count,
-                    "sql": ag_trace.generated_sql, "rows": ag_trace.row_count,
-                    "success": ag_trace.success,
-                }
+            with rcol:
+                st.markdown("#### 🟢 Agent SDK Result")
+                ag_trace_d = None
+                if ag_trace:
+                    ag_tu = ag_trace.token_usage
+                    status_badge = '<span class="pass-badge">PASS</span>' if ag_trace.success else '<span class="fail-badge">FAIL</span>'
+                    st.markdown(status_badge, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<span class="metric-pill">🪙 {ag_tu.total:,} tokens</span>'
+                        f'<span class="metric-pill">💰 ${ag_tu.estimated_cost_usd:.4f}</span>'
+                        f'<span class="metric-pill">⏱️ {fmt_ms(ag_trace.latency_ms)}</span>'
+                        f'<span class="metric-pill">🔁 {ag_trace.iterations} iterations</span>',
+                        unsafe_allow_html=True,
+                    )
+                    tool_seq = " → ".join(
+                        TOOL_LABEL.get(tc.tool_name, tc.tool_name)
+                        for tc in ag_trace.tool_calls
+                    )
+                    st.caption(f"Tool call sequence: {tool_seq}")
+                    if ag_trace.generated_sql:
+                        st.markdown("**Generated SQL**")
+                        st.code(ag_trace.generated_sql, language="sql")
+                    if ag_trace.tenant_modified:
+                        st.markdown('<span class="security-badge">🔒 TENANT FILTER INJECTED</span>', unsafe_allow_html=True)
+                    if ag_trace.blocked_reason:
+                        st.error(f"🚫 Blocked: {ag_trace.blocked_reason}")
+                    if ag_trace.success:
+                        st.success(f"✅ {ag_trace.row_count} rows returned")
+                    if ag_trace.retry_count > 0:
+                        st.warning(f"⚠️ Self-corrected {ag_trace.retry_count} time(s)")
+                    st.markdown(f"**Answer:** {ag_r.answer}")
 
-        # Comparison Table
-        st.divider()
-        st.markdown("### 📊 Head-to-Head Comparison")
+                    ag_trace_d = {
+                        "total_input": ag_tu.total_input, "total_output": ag_tu.total_output,
+                        "total": ag_tu.total, "cost": ag_tu.estimated_cost_usd,
+                        "latency": ag_trace.latency_ms, "retries": ag_trace.retry_count,
+                        "sql": ag_trace.generated_sql, "rows": ag_trace.row_count,
+                        "success": ag_trace.success,
+                    }
 
-        ag_tu_t = ag_trace.token_usage if ag_trace else None
-        cmp_data = {
-            "Metric":        ["SQL Generated", "Tokens Used", "Latency", "Cost (USD)", "Self-corrected", "Rows Returned", "Pass/Fail"],
-            "Direct LLM":   [
-                "✅" if llm_r.sql else "❌",
-                f"{llm_r.total_tokens:,}",
-                fmt_ms(llm_r.latency_ms),
-                f"${llm_r.estimated_cost_usd:.4f}",
-                "N/A",
-                str(llm_r.row_count),
-                "✅ Pass" if llm_r.success else "❌ Fail",
-            ],
-            "Agent SDK":    [
-                "✅" if (ag_trace and ag_trace.generated_sql) else "❌",
-                f"{ag_tu_t.total:,}" if ag_tu_t else "—",
-                fmt_ms(ag_trace.latency_ms) if ag_trace else "—",
-                f"${ag_tu_t.estimated_cost_usd:.4f}" if ag_tu_t else "—",
-                f"Yes ({ag_trace.retry_count}x)" if ag_trace and ag_trace.retry_count else "No",
-                str(ag_trace.row_count) if ag_trace else "—",
-                "✅ Pass" if (ag_trace and ag_trace.success) else "❌ Fail",
-            ],
-        }
-        st.table(pd.DataFrame(cmp_data).set_index("Metric"))
+            # Comparison Table
+            st.divider()
+            st.markdown("### 📊 Head-to-Head Comparison")
+
+            ag_tu_t = ag_trace.token_usage if ag_trace else None
+            cmp_data = {
+                "Metric":        ["SQL Generated", "Tokens Used", "Latency", "Cost (USD)", "Self-corrected", "Rows Returned", "Pass/Fail"],
+                "Direct LLM":   [
+                    "✅" if llm_r.sql else "❌",
+                    f"{llm_r.total_tokens:,}",
+                    fmt_ms(llm_r.latency_ms),
+                    f"${llm_r.estimated_cost_usd:.4f}",
+                    "N/A",
+                    str(llm_r.row_count),
+                    "✅ Pass" if llm_r.success else "❌ Fail",
+                ],
+                "Agent SDK":    [
+                    "✅" if (ag_trace and ag_trace.generated_sql) else "❌",
+                    f"{ag_tu_t.total:,}" if ag_tu_t else "—",
+                    fmt_ms(ag_trace.latency_ms) if ag_trace else "—",
+                    f"${ag_tu_t.estimated_cost_usd:.4f}" if ag_tu_t else "—",
+                    f"Yes ({ag_trace.retry_count}x)" if ag_trace and ag_trace.retry_count else "No",
+                    str(ag_trace.row_count) if ag_trace else "—",
+                    "✅ Pass" if (ag_trace and ag_trace.success) else "❌ Fail",
+                ],
+            }
+            st.table(pd.DataFrame(cmp_data).set_index("Metric"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

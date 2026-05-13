@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
-from app.security.tenant_guard import enforce_tenant_scope
+from app.security.tenant_guard import enforce_tenant_scope, verify_tenant_scope_ast
 
 
 ACTIVE_VKORG = "1004"   # Brennwald — the "logged in" tenant for these tests
@@ -117,6 +117,53 @@ class TestTenantScopeNotApplicable:
         _, was_modified, _ = enforce_tenant_scope(sql, ACTIVE_VKORG)
         # No order_headers — should not be modified
         assert not was_modified
+
+
+class TestASTLevelVerification:
+    """The AST verifier is a 'trust but verify' safety net that catches edge
+    cases the regex injection can miss (subqueries, CTEs, multi-scope refs).
+    """
+
+    def test_correct_filter_passes(self):
+        sql = f"SELECT * FROM order_headers WHERE sales_org_code = '{ACTIVE_VKORG}'"
+        ok, _ = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert ok
+
+    def test_correct_filter_with_alias_passes(self):
+        sql = f"""
+        SELECT * FROM order_headers oh
+        WHERE oh.sales_org_code = '{ACTIVE_VKORG}'
+        """
+        ok, _ = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert ok
+
+    def test_wrong_vkorg_in_filter_is_flagged(self):
+        sql = "SELECT * FROM order_headers WHERE sales_org_code = '9999'"
+        ok, reason = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert not ok
+        assert ACTIVE_VKORG in reason
+
+    def test_missing_filter_is_flagged(self):
+        sql = "SELECT * FROM order_headers"
+        ok, reason = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert not ok
+
+    def test_subquery_only_filter_does_not_protect_outer(self):
+        """The classic regex edge case: filter is inside a subquery, outer
+        scope is unscoped. AST verifier must catch this."""
+        sql = f"""
+        SELECT * FROM order_headers
+        WHERE id IN (
+            SELECT id FROM order_headers WHERE sales_org_code = '{ACTIVE_VKORG}'
+        )
+        """
+        ok, _ = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert not ok, "Outer scope has no tenant filter — must be flagged"
+
+    def test_customers_only_query_passes(self):
+        sql = "SELECT customer_name FROM customers WHERE health_status_code = 'CRITICAL'"
+        ok, _ = verify_tenant_scope_ast(sql, ACTIVE_VKORG)
+        assert ok  # no order_headers reference at all → nothing to scope
 
 
 class TestAllFourTenants:

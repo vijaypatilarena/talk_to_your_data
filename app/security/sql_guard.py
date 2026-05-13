@@ -59,11 +59,28 @@ def validate_sql(sql: str) -> ValidationResult:
             warnings.append(f"Suspicious pattern: {pattern}")
             logger.warning(f"Suspicious SQL pattern '{pattern}'")
 
-    # Phase 4: AST parse via sqlglot
+    # Phase 4: AST parse via sqlglot — confirms it's a SELECT and parseable
     try:
         parsed = sqlglot.parse(sql, dialect="postgres")
         if not parsed:
             return ValidationResult(is_safe=False, reason="SQL could not be parsed")
+
+        # Phase 5: Multi-statement / semicolon-injection check.
+        # Even if every statement is a SELECT, only ONE statement is allowed.
+        # This catches the case where the forbidden-keyword regex would miss
+        # two clean SELECTs separated by ';' (e.g. "SELECT 1; SELECT 2").
+        if len(parsed) > 1:
+            logger.warning(
+                f"BLOCKED: Multi-statement query ({len(parsed)} statements detected)"
+            )
+            return ValidationResult(
+                is_safe=False,
+                reason=(
+                    f"Multiple SQL statements detected ({len(parsed)}). "
+                    "Only one SELECT statement per query is allowed."
+                ),
+            )
+
         for statement in parsed:
             if not isinstance(statement, exp.Select):
                 stmt_type = type(statement).__name__

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import anthropic
-from app.config import config
+from app.config import config, get_model_pricing
 from app.schema_context import get_schema_prompt
 from app.security.sql_executor import execute_safe_query
 
@@ -82,7 +82,8 @@ STRICT OUTPUT RULES:
     input_tokens   = response.usage.input_tokens
     output_tokens  = response.usage.output_tokens
     total_tokens   = input_tokens + output_tokens
-    estimated_cost = (input_tokens * 3 + output_tokens * 15) / 1_000_000
+    in_rate, out_rate = get_model_pricing(config.ANTHROPIC_MODEL)
+    estimated_cost    = (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
 
     sql = _extract_sql(raw_text)
 

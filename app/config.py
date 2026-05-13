@@ -4,6 +4,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Per-million-token pricing in USD: (input_per_M, output_per_M).
+# Keep updated when adding/changing models. Looked up by ANTHROPIC_MODEL.
+MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-opus-4-7":           (15.0, 75.0),
+    "claude-opus-4-6":           (15.0, 75.0),
+    "claude-sonnet-4-6":         ( 3.0, 15.0),
+    "claude-sonnet-4-5":         ( 3.0, 15.0),
+    "claude-haiku-4-5":          ( 1.0,  5.0),
+    "claude-haiku-4-5-20251001": ( 1.0,  5.0),
+}
+
+# Used when an unknown model is configured.
+_FALLBACK_PRICING: tuple[float, float] = (3.0, 15.0)
+
+
+def get_model_pricing(model: str) -> tuple[float, float]:
+    """Return (input_per_M_usd, output_per_M_usd) for the named model."""
+    return MODEL_PRICING.get(model, _FALLBACK_PRICING)
+
+
 class Config:
     # Anthropic
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
