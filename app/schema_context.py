@@ -52,14 +52,16 @@ Active tenant VKORG: '{vkorg}' — EVERY query touching order_headers MUST filte
   REVENUE SIGN CONVENTION (CRITICAL):
     document_category_code IN ('C','L') → ADD to revenue
     document_category_code IN ('K','H') → SUBTRACT from revenue
-  Always exclude: order_status_code IN ('CANCELLED','REJECTED')
- 
+  Always exclude cancelled/rejected orders. order_status_code MAY BE NULL — treat
+  NULL as a valid (non-cancelled) order. Use COALESCE so NULLs are not silently dropped:
+    COALESCE(order_status_code, '') NOT IN ('CANCELLED','REJECTED')
+
   Canonical revenue formula:
     SUM(CASE WHEN document_category_code IN ('C','L') THEN net_value
              WHEN document_category_code IN ('K','H') THEN -net_value
              ELSE 0 END)
     WHERE sales_org_code = '{vkorg}'
-    AND order_status_code NOT IN ('CANCELLED','REJECTED')
+    AND COALESCE(order_status_code, '') NOT IN ('CANCELLED','REJECTED')
  
 == TABLE: order_lines (268,880 rows) ==
   id UUID, order_header_id UUID         -- FK to order_headers.id
@@ -135,7 +137,7 @@ SELECT SUM(CASE WHEN document_category_code IN ('C','L') THEN net_value
                 ELSE 0 END) AS total_revenue
 FROM order_headers
 WHERE sales_org_code = '{vkorg}'
-AND order_status_code NOT IN ('CANCELLED','REJECTED')
+AND COALESCE(order_status_code, '') NOT IN ('CANCELLED','REJECTED')
 AND order_date >= DATE_TRUNC('year', CURRENT_DATE);
  
 -- Current KPIs from snapshot:
@@ -156,6 +158,8 @@ SQL_RULES = """
 5. Apply document_category_code sign convention for revenue totals.
 6. Use CURRENT_DATE for today. DATE_TRUNC for period boundaries.
 7. Use COALESCE(column, 0) for numeric aggregations with NULLs.
+   For order_status_code exclusions, use COALESCE(order_status_code, '') NOT IN (...)
+   because NULL NOT IN (...) evaluates to UNKNOWN and silently drops every row.
 8. If you cannot write a valid query output exactly: CANNOT_GENERATE
 """
  
