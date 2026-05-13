@@ -110,6 +110,26 @@ ORDER BY dms.snapshot_date DESC LIMIT 1
 == QUERY ROUTING ==
 Use daily_metrics_snapshots for: current order book, health counts, KPI summaries
 Use order_headers + customers for: trends, date ranges, specific analysis, product questions
+
+== GOTCHAS (READ CAREFULLY) ==
+1. customers ⨝ order_headers FAN-OUT:
+   The join customers ⨝ order_headers multiplies each customer row by their
+   order count. NEVER use COUNT(*) over this join when counting CUSTOMERS —
+   it counts orders, not customers.
+     ❌ WRONG: SELECT health_status_code, COUNT(*) FROM customers c
+               JOIN order_headers oh ON oh.customer_id = c.id ...
+     ✅ RIGHT: SELECT health_status_code, COUNT(DISTINCT c.id) FROM customers c
+               JOIN order_headers oh ON oh.customer_id = c.id ...
+   Same rule applies to SUM/AVG over customer-level columns (rolling_12m_spend,
+   credit_limit, etc.) — wrap with DISTINCT or aggregate after a subquery that
+   first dedupes to one row per customer.
+
+2. For any "health status / segment counts" question, PREFER daily_metrics_snapshots
+   (it already has healthy_count, at_risk_count, critical_count, etc. precomputed
+   per tenant, no fan-out risk). Only fall back to customers when the snapshot
+   does not have the needed dimension.
+
+3. order_status_code is often NULL — see SQL rule #7 for the COALESCE pattern.
 """
  
 EXAMPLE_QUERIES = """
@@ -147,6 +167,23 @@ FROM daily_metrics_snapshots dms
 JOIN companies co ON co.id = dms.company_id
 WHERE co.vkorg_codes::text LIKE '%{vkorg}%'
 ORDER BY dms.snapshot_date DESC LIMIT 1;
+
+-- Customer breakdown by health status (PREFERRED: snapshot — no fan-out risk):
+SELECT healthy_count, early_warning_count, at_risk_count,
+       critical_count, inactive_count, total_customer_count
+FROM daily_metrics_snapshots dms
+JOIN companies co ON co.id = dms.company_id
+WHERE co.vkorg_codes::text LIKE '%{vkorg}%'
+ORDER BY dms.snapshot_date DESC LIMIT 1;
+
+-- Customer breakdown by health status (FALLBACK when snapshot dim unavailable —
+-- note COUNT(DISTINCT c.id) is mandatory because the join fans out per order):
+SELECT c.health_status_code, COUNT(DISTINCT c.id) AS customer_count
+FROM customers c
+JOIN order_headers oh ON oh.customer_id = c.id
+WHERE oh.sales_org_code = '{vkorg}'
+GROUP BY c.health_status_code
+ORDER BY customer_count DESC;
 """
  
 SQL_RULES = """
@@ -160,7 +197,14 @@ SQL_RULES = """
 7. Use COALESCE(column, 0) for numeric aggregations with NULLs.
    For order_status_code exclusions, use COALESCE(order_status_code, '') NOT IN (...)
    because NULL NOT IN (...) evaluates to UNKNOWN and silently drops every row.
-8. If you cannot write a valid query output exactly: CANNOT_GENERATE
+8. CUSTOMER COUNTS: When joining customers ⨝ order_headers, ALWAYS use
+   COUNT(DISTINCT c.id) (never COUNT(*)) to count customers. The join fans out
+   one row per order, so COUNT(*) is an order count, not a customer count.
+   Same applies to SUM/AVG of customer-level columns over this join.
+9. For "how many customers by status / segment / region" type questions, query
+   daily_metrics_snapshots first if it has the dimension. Only fall back to a
+   customers ⨝ order_headers GROUP BY when the snapshot lacks it.
+10. If you cannot write a valid query output exactly: CANNOT_GENERATE
 """
  
  
