@@ -130,6 +130,24 @@ Use order_headers + customers for: trends, date ranges, specific analysis, produ
    does not have the needed dimension.
 
 3. order_status_code is often NULL — see SQL rule #7 for the COALESCE pattern.
+
+4. "TOP N + TIME TREND" questions return ONE ROW PER ENTITY — not one row per
+   (entity, period). Common failure mode: agent does GROUP BY (customer, month)
+   which gives N × 12 rows (e.g. 108-120 rows for "top 10 + monthly trend over
+   12 months"). The user wanted a clean 10-row summary, not a long flat table.
+
+   ✅ RIGHT pattern:
+     Step A — CTE finds the top N entities (LIMIT inside the CTE).
+     Step B — Second CTE joins those entities to order_headers and groups by
+              (entity, month) to get monthly values.
+     Step C — Third CTE uses a window function (LAG OVER PARTITION BY entity
+              ORDER BY month) to compute period-over-period change.
+     Step D — Final SELECT aggregates back to ONE row per entity with summary
+              trend columns (avg_mom_change_pct, total_spend, etc.).
+
+   ❌ WRONG pattern (the failure case):
+     SELECT customer_name, month, spend FROM ... GROUP BY customer_name, month
+     — returns 10 × 12 = 120 rows, not a per-customer summary.
 """
  
 EXAMPLE_QUERIES = """
@@ -184,6 +202,45 @@ JOIN order_headers oh ON oh.customer_id = c.id
 WHERE oh.sales_org_code = '{vkorg}'
 GROUP BY c.health_status_code
 ORDER BY customer_count DESC;
+
+-- Top N critical customers + month-on-month spend decline over last 12 months
+-- (CANONICAL "TOP N + TIME TREND" PATTERN — ONE ROW PER CUSTOMER, NOT per month):
+WITH top_critical AS (
+    SELECT c.id, c.customer_name, c.rolling_12m_spend
+    FROM customers c
+    JOIN order_headers oh ON oh.customer_id = c.id
+    WHERE oh.sales_org_code = '{vkorg}'
+      AND c.health_status_code = 'CRITICAL'
+    GROUP BY c.id, c.customer_name, c.rolling_12m_spend
+    ORDER BY c.rolling_12m_spend DESC NULLS LAST
+    LIMIT 10
+),
+monthly_spend AS (
+    SELECT tc.customer_name,
+           DATE_TRUNC('month', oh.order_date) AS month,
+           SUM(CASE WHEN document_category_code IN ('C','L') THEN net_value
+                    WHEN document_category_code IN ('K','H') THEN -net_value
+                    ELSE 0 END) AS spend
+    FROM top_critical tc
+    JOIN order_headers oh ON oh.customer_id = tc.id
+    WHERE oh.sales_org_code = '{vkorg}'
+      AND oh.order_date >= CURRENT_DATE - INTERVAL '12 months'
+      AND COALESCE(oh.order_status_code, '') NOT IN ('CANCELLED','REJECTED')
+    GROUP BY tc.customer_name, DATE_TRUNC('month', oh.order_date)
+),
+with_lag AS (
+    SELECT customer_name, month, spend,
+           LAG(spend) OVER (PARTITION BY customer_name ORDER BY month) AS prev_spend
+    FROM monthly_spend
+)
+SELECT customer_name,
+       ROUND(SUM(spend), 2)                            AS total_12m_spend,
+       ROUND(AVG(CASE WHEN prev_spend > 0
+                      THEN ((spend - prev_spend) / prev_spend) * 100
+                      ELSE NULL END), 2)               AS avg_mom_change_pct
+FROM with_lag
+GROUP BY customer_name
+ORDER BY avg_mom_change_pct ASC;
 """
  
 SQL_RULES = """
@@ -204,7 +261,13 @@ SQL_RULES = """
 9. For "how many customers by status / segment / region" type questions, query
    daily_metrics_snapshots first if it has the dimension. Only fall back to a
    customers ⨝ order_headers GROUP BY when the snapshot lacks it.
-10. If you cannot write a valid query output exactly: CANNOT_GENERATE
+10. OUTPUT SHAPE for "top N + time trend" questions: produce ONE row per entity
+    with summary trend columns (e.g. avg_mom_change_pct, total_12m_spend), NOT
+    one row per (entity, period). Use the canonical pattern: CTE for top N →
+    CTE for per-period values → CTE with LAG window function → final SELECT
+    aggregating to one row per entity. Returning 100+ rows for a "top 10"
+    question is a bug, not a feature.
+11. If you cannot write a valid query output exactly: CANNOT_GENERATE
 """
  
  
