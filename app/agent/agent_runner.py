@@ -118,7 +118,7 @@ def run_agent(
     The agent autonomously:
     1. Classifies the question
     2. Generates SQL if needed
-    3. Executes the SQL
+    3. Executes the SQL 
     4. Self-corrects if execution fails
     5. Returns a natural language answer
 

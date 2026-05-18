@@ -25,7 +25,7 @@ def setup_logging():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     fh = logging.FileHandler(APP_LOG)
-    fh.setFormatter(fmt)
+    fh.setFormatter(fmt)  
     root.addHandler(fh)
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
