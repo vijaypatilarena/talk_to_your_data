@@ -36,6 +36,8 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
+
+
 def log_pipeline_event(
     question: str,
     tenant_vkorg: str,
